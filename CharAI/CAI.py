@@ -1,5 +1,5 @@
 import tls_client
-import orjson as json
+import ujson as json
 import copy
 import inspect
 from time import sleep, time
