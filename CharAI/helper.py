@@ -116,23 +116,6 @@ class DictWrapper(dict):
         return self.data.get(__name, self.__default)
 
 
-def ensure_sorted[t](i: t, key: Callable[[Any], Any] = lambda x: x):
-    it = iter(i)
-    try:
-        prev = next(it)
-    except StopIteration:
-        return
-    check = True
-    while check:
-        try:
-            this = next(it)
-        except StopIteration:
-            break
-        check = key(prev) < key(this)
-        prev = this
-    if not check:
-        i.sort(key=key)
-
 from collections.abc import Collection
 
 class __State(Collection):
