@@ -5,17 +5,21 @@ import inspect
 from time import sleep, time
 from enum import Enum
 from datetime import datetime, timezone
+from dateutil.parser import parse as tparse
 from collections.abc import Collection
 
 from CharAI import errors, helper, new
 
 __all__ = ['Client']
 
-BASE_IMAGE_PATH = "https://characterai.io/i/400/static/posts/images/"
-BASE_AVATAR_URL = "https://characterai.io/i/80/static/avatars/"
-BASE_TOPIC_AVATAR_URL = "https://characterai.io/i/80/static/topic-pics/"
-BASE_POST_IMG_UPLOAD_PATH = "chat/post/img/upload/"
-BASE_AVATAR_UPLOAD_PATH = "chat/avatar/upload/"
+USER_DATA = "https://characterai.io/i/400/static/user/"
+IMAGE_PATH = "https://characterai.io/i/400/static/posts/images/"
+AVATAR_URL = "https://characterai.io/i/80/static/avatars/"
+TOPIC_AVATAR_URL = "https://characterai.io/i/80/static/topic-pics/"
+POST_IMG_UPLOAD_PATH = "chat/post/img/upload/"
+CHAT_IMG_UPLOAD_PATH = "chat/upload-image/"
+AVATAR_UPLOAD_PATH = "chat/avatar/upload/"
+
 
 DEFAULT_LAST_MSG_PAGE = 1000000
 
@@ -29,37 +33,37 @@ class Subcription(Enum):
     beta = 1
     plus = 2
 
-class Post_type(Enum):
-    chat = 1
-    post = 2
-
 class Visibility(Enum):
     PUBLIC = 'PUBLIC'
     UNLISTED = 'UNLISTED'
     PRIVATE = 'PRIVATE'
     VISIBILITY_PRIVATE = 'VISIBILITY_PRIVATE'
 
-class Posts_sort(Enum):
+class PostSort(Enum):
     top = 'top'
     votes = 'votes'
     created = 'created' 
 
+class ImgOrigin:
+    UPLOAD = "UPLOADED"
+    GENERATE = "GENERATED"
+
 def parse_time(time: str|Data) -> datetime:
     """ Parses time string """
-    return UNKNOWN if time == UNKNOWN else datetime.strptime(time, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+    return UNKNOWN if time == UNKNOWN else tparse(time)
 
 def get_avatar(self, info: dict, pre: str = ''):
     """ Get and save an avatar """
     setattr(self, 'avatar', info.pop(pre + 'avatar_file_name', UNKNOWN))
     if self.avatar != UNKNOWN and self.avatar != None and len(self.avatar) > 0:
-        self.avatar = BASE_AVATAR_URL + self.avatar
+        self.avatar = AVATAR_URL + self.avatar
     setattr(self, 'avatar_type', info.pop(pre + 'avatar_type', UNKNOWN))
 
 def get_img(self, info: dict):
     """ Get and save an image """
     setattr(self, 'image', info.pop('image_rel_path', UNKNOWN))
     if self.image != UNKNOWN and len(self.image) > 0:
-        self.image = BASE_IMAGE_PATH + self.image
+        self.image = IMAGE_PATH + self.image
 
         
 
@@ -108,7 +112,7 @@ class CAI:
         self.token = token
         self.get_sub()
 
-    def request(self, path: str, *, neo: bool = False, method: str = 'GET', split: bool = False, **kwargs):
+    def request(self, path: str, *, neo: bool = False, method: str = 'GET', parse: bool = True, abort_errors: bool = False, **kwargs):
         """ Perform a request """
 
         if neo:
@@ -124,7 +128,15 @@ class CAI:
             res = self.session.post(url, headers=headers, **kwargs)
         elif method == 'PUT':
             res = self.session.put(url, headers=headers, **kwargs)
+
+        if not parse:
+            return res.text
+
         jres: dict = json.loads(res.text)
+
+        if abort_errors:
+            return jres
+        
         if jres.get('neo_error', UNKNOWN) != UNKNOWN:
             raise errors.ServerError(jres["comment"])
         elif jres.get('detail', UNKNOWN) != UNKNOWN and jres['detail'].startswith('Auth'):
@@ -134,7 +146,7 @@ class CAI:
         elif jres.get('error', UNKNOWN) != UNKNOWN:
             raise errors.ServerError(jres["error"])
         else:
-            return jres if not split else json.loads(res.text.split('\n')[-2])
+            return jres
     
     def upload_files(self, path: str, files: list[tuple[str, helper.File]]):
         """ Upload files """
@@ -151,7 +163,7 @@ class CAI:
         try:
             res = uploader.upload(url, headers={
                 'Authorization': f'Token {self.token}'
-            }).text
+            })
         except Exception as e:
             raise errors.CAIError("Failed to upload files") from e
         
@@ -172,7 +184,7 @@ class CAI:
         if self.token == None:
             raise errors.AuthError("Missing API token")
         return self.request('chat/user/')
-    
+
     def test_connection(self):
         """ Test the connection to server """
         count = 0
@@ -192,6 +204,14 @@ class Authenticated(CAI):
         super().__init__(token=token)
         self.test_connection()
         self.user = User.User(self)
+
+    def generate_image(self, descr: str) -> str:
+        return self.request(
+            "chat/generate-image/",
+            json={
+                "image_description": descr
+            }
+        )["image_rel_path"]
         
 class Anonymous(CAI):
     """ An anonymous Character AI session """
@@ -273,9 +293,9 @@ class History:
     def get_messages(self, page: int = DEFAULT_LAST_MSG_PAGE) -> dict:
         """ Get saved messages """
         if self.source == History.POST:
-            return self.__cai.request(f'chat/history/external/msgs/?history={self.external_id}&page_num={page}')
+            return self.__cai.request(f'chat/history/msgs/?history_external_id={self.external_id}&page_num={page}')
         elif self.source == History.CHAT:
-            return self.__cai.request(f'chat/history/external/msgs/user/?history={self.external_id}&page_num={page}')
+            return self.__cai.request(f'chat/history/msgs/user/?history_external_id={self.external_id}&page_num={page}')
 
                  
 class Comment:
@@ -832,7 +852,7 @@ class Topic:
         self.name = info.pop('name', UNKNOWN)
         self.unseen_posts_count = info.pop('unseen_posts_count', UNKNOWN)
         
-    def get_posts(self, *, page: int = 1, loads: int = 1, sort: Posts_sort = Posts_sort.top) -> dict[str, list[Post.Topic]|bool]:
+    def get_posts(self, *, page: int = 1, loads: int = 1, sort: PostSort = PostSort.top) -> dict[str, list[Post.Topic]|bool]:
         """ Get latest posts on the topic """
         data = self.__cai.request(
             f'chat/posts/?topic={self.external_id}&page={page}'
@@ -877,7 +897,7 @@ class Feed:
     def __init__(self, cai: Authenticated):
         self.__cai = cai
 
-    def get_posts(self, *, page: int = 1, loads: int = 1, sort: Posts_sort = Posts_sort.top):
+    def get_posts(self, *, page: int = 1, loads: int = 1, sort: PostSort = PostSort.top):
         """ Get latest posts from the feed """
         data = self.__cai.request(
             f'chat/posts/?topic={Feed.EX_ID}&page={page}'
@@ -960,7 +980,7 @@ class User:
             ]
         
         def update(self, *, avatar: new.File = None, bio: str = None, name: str = None, username: str = None):
-            """ Update user's information """
+            """ Update user's information from attributes """
             if avatar == None and bio == None and name == None and username == None:
                 return False
             
@@ -969,7 +989,7 @@ class User:
             if avatar == None:
                 imgurl = self.avatar
             else:
-                info = self.__cai.upload_files(BASE_AVATAR_UPLOAD_PATH, files=[('image', avatar)])
+                info = self.__cai.upload_files(AVATAR_UPLOAD_PATH, files=[('image', avatar)])
                 if info['status'] != 'OK':
                     raise errors.ServerError(info['error'])
                 imgurl = info['value']
@@ -1103,119 +1123,215 @@ class User:
                 setattr(self, attr, locals()[attr])
             
         
-
 Owner.Character = User.Other
 
+class Reply:
+    def __init__(self, info: dict):
+        self.id = info.pop("id", UNKNOWN)
+        self.uuid = info.pop("uuid", UNKNOWN)
+        self.text = info.pop("text", UNKNOWN)
 
-# Working...
+
+
+class Messaging:
+    """ Supports messaging functions """
+
+    class ImgDescr:
+        GEN = "GENERATION_PROMPT"
+        AUTO = "AUTO_IMAGE_CAPTIONING"
+        HUMAN = "HUMAN"
+
+    class Response:
+        """ Response message """
+        def __init__(self, replies: list[Reply], audios: list[new.MP3]):
+            self.replies = replies
+            self.audios = audios
+
+    class Object:
+        """ A message to be sent """
+
+        def __init__(self,
+            cai: Authenticated,
+            text: str,
+            *,
+            img: new.File = None, 
+            gen_img: bool = False, 
+            gen_prompt: str = None, 
+            img_descr: str = "",
+            options: dict = {}
+        ):
+            self.cai = cai
+            self.data = {
+                "text": text,
+                "mock_response": False,
+                **options
+            }
+
+            self.img = img
+            self.gen_img = gen_img
+            self.gen_prompt = gen_prompt
+            self.img_descr = img_descr
+            self.options = options
+        
+        def attach_image(self, image: new.File, description: str = ""):
+            """ Uploads an image to attach to the message """
+
+            info = self.cai.upload_files(CHAT_IMG_UPLOAD_PATH, files=[('image', image)])
+            if info['status'] != 'OK':
+                raise errors.ServerError(info['error'])
+            
+            self.data["image_rel_path"] = USER_DATA + info['value']
+            self.data["image_origin_type"] = ImgOrigin.UPLOAD
+            self.data["image_description"] = description
+
+            if len(description) > 0:
+                self.data["image_description_type"] = Messaging.ImgDescr.HUMAN
+            else:
+                self.data["image_description_type"] = Messaging.ImgDescr.AUTO
+
+        def generate_image(self, prompt: str, description: str = ""):
+            """ Generates an image and attach it to the message """
+
+            self.data["image_rel_path"] = USER_DATA + self.cai.generate_image(prompt)
+            self.data["image_origin_type"] = ImgOrigin.GENERATE
+            self.data["image_description"] = prompt if len(description) == 0 else description
+            self.data["image_description_type"] = Messaging.ImgDescr.GEN
+
+        def send(self, chat, options: dict):
+            """ Send the message """
+
+            chat: Chat = chat
+            self.data.update({
+                "character_external_id": chat.c_id,
+                "history_external_id": chat.history.external_id,
+                "tgt": chat.char.username,
+                "voice_enabled": chat.voice,
+                **options
+            })
+
+            if self.img != None:
+                self.attach_image(self.img, self.img_descr)
+            elif self.gen_img:
+                if self.gen_prompt == None:
+                    raise errors.ValueError("Image generate prompt cannot be empty")
+                self.generate_image(self.gen_prompt, self.img_descr)
+
+            resp: str = self.cai.request(
+                'chat/streaming/', 
+                method="POST",
+                parse=False,
+                abort_errors=True,
+                json=self.data
+            )
+
+            resp: list = resp.split("\n")
+            resp.pop()
+
+            resp = [json.loads(info) for info in resp]
+
+            if "error" in resp[0]:
+                self.failed = True
+                self._voice = chat.voice
+                self._uuid = resp[0]["last_user_msg_uuid"]
+                raise errors.ServerError(resp[0]["error"])
+
+            replies = resp[-1]["replies"]
+
+            if chat.voice:
+                return Messaging.Response(
+                    replies=replies,
+                    audios=[
+                        new.MP3(chunk["speech"])
+                        for chunk in
+                        resp
+                    ]
+                )
+            else:
+                return Messaging.Response(
+                    replies=replies,
+                    audios=None
+                )
+            
+        def retry(self):
+
+            if not hasattr(self, "failed") or self.failed != True:
+                return
+            
+            # Now we reset the old data
+            self.data.pop("seen_msg_uuids", None)
+            self.data.pop("parent_msg_uuid", None)
+            self.data.pop("primary_msg_uuid", None)
+
+            # Set the message uuid to retry
+            self.data["retry_last_user_msg_uuid"] = self._uuid
+
+            resp: str = self.cai.request(
+                'chat/streaming/', 
+                method="POST",
+                parse=False,
+                json=self.data
+            )
+
+            resp: list = resp.split("\n")
+            resp.pop()
+
+            resp = [json.loads(info) for info in resp]
+
+            if "error" in resp[0]:
+                raise errors.ServerError(resp[0]["error"])
+
+            replies = resp[-1]["replies"]
+
+            if self._voice:
+                return Messaging.Response(
+                    replies=replies,
+                    audios=[
+                        new.MP3(chunk["speech"])
+                        for chunk in
+                        resp
+                        if "speech" in chunk
+                    ]
+                )
+            else:
+                return Messaging.Response(
+                    replies=replies,
+                    audios=None
+                )
+
 class Message:
     """ Represents a message """
     def __init__(self, chat, info: dict, pos: int):
         self.chat: Chat = chat # :v just for type hinting
-        self.history = chat.history
         self.__cai = chat.cai
         self.pos = pos
         self.__load_info(info)
         
     def __load_info(self, info: dict):
+
         """ Load message's information from api """
+
         self.deleted = info.pop('deleted', UNKNOWN)
         self.id = info.pop('id', UNKNOWN)
-        self.image_prompt = info.pop('image_prompt_text', UNKNOWN)
-        get_img(self, info)
         self.is_alternative = info.pop('is_alternative', UNKNOWN)
         self.text = info.pop('text', UNKNOWN)
         self.uuid = info.pop('uuid', UNKNOWN)
         self.sender = info.pop('src__user__username', UNKNOWN)
-        self.is_users_message = self.cai.user.username == self.sender
-        if self.is_users_message:
+
+        self.image_prompt = info.pop('image_prompt_text', UNKNOWN)
+        get_img(self, info)
+
+        self.is_reply = self.__cai.user.username != self.sender
+
+        if not self.is_reply:
             def block(self):
                 raise errors.CAIError("This is not character's message")
-        
-    def next(
-            self, parent, *, 
-            ranking_method = "random", 
-            staging = False,
-            model_server_address = None,
-            model_server_address_exp_chars = None,
-            override_prefix = None,
-            rooms_prefix_method = "",
-            override_rank = None,
-            rank_candidates = None,
-            filter_candidates = None,
-            unsanitized_characters = None,
-            prefix_limit = None,
-            prefix_token_limit = None,
-            stream_params = None,
-            traffic_source = None,
-            model_properties_version_keys = "",
-            enable_tti = None,
-            initial_timeout = None,
-            insert_beginning = None,
-            stream_every_n_steps = 16,
-            is_proactive = False,
-            image_rel_path = "",
-            image_description = "",
-            image_description_type = "",
-            image_origin_type = "",
-            parent_msg_uuid = None,
-            primary_msg_uuid = None,
-            seen_msg_uuids = [],
-            retry_last_user_msg_uuid = None,
-            num_candidates = 1,
-            give_room_introductions = True,
-            mock_response = False,
-            **kwargs
-        ):
-        if not self.active:
-            raise errors.CAIError("The chat isn't active")
-        data = self.__cai.request(
-            'chat/streaming/', method="POST",
-            split=True,
-            json={
-                "history_external_id": self.history.external_id,
-                "character_external_id": self.char.external_id,
-                "text": self.text,
-                "tgt": self.char.username,
-                "ranking_method": ranking_method,
-                "staging": staging,
-                "model_server_address": model_server_address,
-                "model_server_address_exp_chars": model_server_address_exp_chars,
-                "override_prefix": override_prefix,
-                "rooms_prefix_method": rooms_prefix_method,
-                "override_rank": override_rank,
-                "rank_candidates": rank_candidates,
-                "filter_candidates": filter_candidates,
-                "unsanitized_characters": unsanitized_characters,
-                "prefix_limit": prefix_limit,
-                "prefix_token_limit": prefix_token_limit,
-                "stream_params": stream_params,
-                "traffic_source": traffic_source,
-                "model_properties_version_keys": model_properties_version_keys,
-                "enable_tti": enable_tti,
-                "initial_timeout": initial_timeout,
-                "insert_beginning": insert_beginning,
-                "stream_every_n_steps": stream_every_n_steps,
-                "is_proactive": is_proactive,
-                "image_rel_path": image_rel_path,
-                "image_description": image_description,
-                "image_description_type": image_description_type,
-                "image_origin_type": image_origin_type,
-                "voice_enabled": self.chat.voice_enabled,
-                "parent_msg_uuid": parent_msg_uuid,
-                "primary_msg_uuid": primary_msg_uuid,
-                "seen_msg_uuids": seen_msg_uuids,
-                "retry_last_user_msg_uuid": retry_last_user_msg_uuid,
-                "num_candidates": num_candidates,
-                "give_room_introductions": give_room_introductions,
-                "mock_response": mock_response,
-                **kwargs
-            }
-        )
-        
-    def __add_info(self, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+            
+            self.next = block
+            self.reply = block
+
+    def reply(self, message: Messaging.Object):
+        """ Reply to this message """
+        self.chat.reply(message, self.uuid)
 
     def remove(self) -> bool:
         """ Delete this message """
@@ -1224,37 +1340,47 @@ class Message:
             'chat/history/msgs/delete/',
             method='POST',
             json={
-                "history_id": self.history.external_id,
+                "history_id": self.chat.history.external_id,
                 "uuids_to_delete": [self.uuid]
             }
         )['status'] == "OK"
 
-# Working... 
+
 class MessagePage:
     """ A page of up to 20 messages """
     def __init__(self, chat, page: int):
         self.chat: Chat = chat
         self.history = self.chat.history
+        
+        self.load(page)
+
+    def load(self, page: int):
         self.page = page
         self.pos = (DEFAULT_LAST_MSG_PAGE - page) * 20
         
         info = self.history.get_messages(page)
+
         self.more = info.pop('has_more', UNKNOWN)
-        self.next = info.pop('next_page', UNKNOWN)
         
-        self.messages = [Message(chat, msg_info, i + self.pos) for i, msg_info in enumerate(info.pop('messages', []))]
+        self.messages = [Message(self.chat, msg_info, i + self.pos) for i, msg_info in enumerate(info.pop('messages', []))]
+
+    def reload(self):
+        self.load(self.page)
         
+    def __getitem__(self, index: int):
+        return self.messages[index]
+
     def is_first(self) -> bool:
         """ Check if this is the first (oldest) page """
         return not self.more
     
     def is_last(self) -> bool:
-        """ Check if this is the last (newest) page """
+        """ Check if this is the last (latest) page """
         return self.page == DEFAULT_LAST_MSG_PAGE
     
     def slide(self, slides: int) -> None:
         """ Slide to forward / backward pages """
-        self.__init__(self.history, self.page + slides)
+        self.__init__(self.chat, self.page + slides)
 
     def previous(self):
         """ Get the previous page """
@@ -1270,6 +1396,12 @@ class MessagePage:
 
 # Working...
 class Chat:
+    """ A class provide support for chatting stuff through the old api """
+
+    class RefState(Enum):
+        ALTER = 0
+        NEW = 1
+
     def exists(cai: Authenticated, external_id: str) -> bool:
         return cai.session.post(
             'chat/history/continue/',
@@ -1285,9 +1417,9 @@ class Chat:
         self.cai = cai
         
         if isinstance(char, str):
-            self._char = char
+            self.c_id = char
         else:
-            self._char: str = char.external_id
+            self.c_id: str = char.external_id
             
         if not self._continue():
             self.active = self._new()
@@ -1302,22 +1434,26 @@ class Chat:
     def _continue(self) -> bool:
         info = self.cai.request(
             'chat/history/continue/',
+            method='POST',
             json={
-                "character_external_id": self._char,
+                "character_external_id": self.c_id,
                 "history_external_id": None
             },
-            parse_output=False
+            parse=False
         )
+
         if info == Chat.UNKNOWN_CHARACTER:
             raise errors.ServerError("Unknown character external id: \"{}\"")
+        
         if info.startswith(Chat.NO_CHAT_YET):
             return False
-        info = json.loads(json)
+        
+        info = json.loads(info)
         
         self.created = parse_time(info.pop('created', UNKNOWN))
         self.last_interaction = parse_time(info.pop('last_interaction', UNKNOWN))
         
-        self.history = History(self.cai, History.chat)
+        self.history = History(self.cai, History.CHAT)
         self.history.load(info)
         
         self.greet = None
@@ -1329,37 +1465,59 @@ class Chat:
             'chat/history/create/',
             method='POST',
             json={
-                'character_external_id': self._char
-            }
+                'character_external_id': self.c_id
+            },
+            parse=False
         )
 
         self.created = parse_time(info.pop('created', UNKNOWN))
         self.last_interaction = parse_time(info.pop('last_interaction', UNKNOWN))
         
-        self.history = History(self.cai, History.chat)
+        self.history = History(self.cai, History.CHAT)
         self.history.load(info)
         
-        self.greet = Message(self, info.pop('messages', [dict()])[0], 0)
+        self.greet = Message(self, info.pop('messages', [{}])[0], 0)
         
         return info['status'] == "OK"
     
-    def _load_info(self):
-        info = self.cai.request(
-            'chat/character/info/',
-            method="POST",
-            json={
-                "external_id": self._char
-            }
-        )
+    def __get_replies(self):
+        """ Find the latest replies from AI including alternatives """
+        msgs: list[Message] = []
+
+        page = copy.deepcopy(self.first_page)
+
+        index = len(page.messages) - 1
+
+        while page[index].is_reply:
+            msgs.append(page[index])
+            index -= 1
+            if not page[index].is_alternative:
+                break
+            if index < 0:
+                page.slide(-1)
+                index = len(page.messages) - 1
+
+        return list(reversed(msgs))
 
     def __final_init(self):
-        self.char = Character.Info(self.cai, self._char)
-        delattr(self, '_char')
+        self.char = Character.Info(self.cai, self.c_id)
         self.first_page = MessagePage(self, DEFAULT_LAST_MSG_PAGE)
-        self.voice_enabled = False
+        self.voice = False
         self.remove = self.remove(self)
+
+        self.last_reply = self.__get_replies()
+
+    def __refresh(self, update: RefState):
+        self.first_page.reload()
+
+        if update == Chat.RefState.ALTER:
+            self.last_reply.append(self.first_page[-1])
+        elif update == Chat.RefState.NEW:
+            self.last_reply = [self.first_page[0]]
         
     def all_pages(self):
+        """ Returns all pages of the chat """
+
         if not self.active:
             raise errors.CAIError("The chat isn't active")
         it = copy.deepcopy(self.first_page)
@@ -1367,157 +1525,67 @@ class Chat:
         while not it.is_first():
             it = it.previous()
             pages.append(it)
-        return pages
-    
-    def send(
-            self, text: str, *, 
-            ranking_method = "random", 
-            staging = False,
-            model_server_address = None,
-            model_server_address_exp_chars = None,
-            override_prefix = None,
-            rooms_prefix_method = "",
-            override_rank = None,
-            rank_candidates = None,
-            filter_candidates = None,
-            unsanitized_characters = None,
-            prefix_limit = None,
-            prefix_token_limit = None,  
-            stream_params = None,
-            traffic_source = None,
-            model_properties_version_keys = "",
-            enable_tti = None,
-            initial_timeout = None,
-            insert_beginning = None,
-            stream_every_n_steps = 16,
-            is_proactive = False,
-            image_rel_path = "",
-            image_description = "",
-            image_description_type = "",
-            image_origin_type = "",
-            seen_msg_uuids = [],
-            retry_last_user_msg_uuid = None,
-            num_candidates = 1,
-            give_room_introductions = True,
-            mock_response = False,
-            **kwargs
-        ):
-        if not self.active:
-            raise errors.CAIError("The chat isn't active")
-        data = self.cai.request(
-            'chat/streaming/', method="POST",
-            split=True,
-            json={
-                "history_external_id": self.history.external_id,
-                "character_external_id": self.char.external_id,
-                "text": text,
-                "tgt": self.char.username,
-                "ranking_method": ranking_method,
-                "staging": staging,
-                "model_server_address": model_server_address,
-                "model_server_address_exp_chars": model_server_address_exp_chars,
-                "override_prefix": override_prefix,
-                "rooms_prefix_method": rooms_prefix_method,
-                "override_rank": override_rank,
-                "rank_candidates": rank_candidates,
-                "filter_candidates": filter_candidates,
-                "unsanitized_characters": unsanitized_characters,
-                "prefix_limit": prefix_limit,
-                "prefix_token_limit": prefix_token_limit,
-                "stream_params": stream_params,
-                "traffic_source": traffic_source,
-                "model_properties_version_keys": model_properties_version_keys,
-                "enable_tti": enable_tti,
-                "initial_timeout": initial_timeout,
-                "insert_beginning": insert_beginning,
-                "stream_every_n_steps": stream_every_n_steps,
-                "is_proactive": is_proactive,
-                "image_rel_path": image_rel_path,
-                "image_description": image_description,
-                "image_description_type": image_description_type,
-                "image_origin_type": image_origin_type,
-                "voice_enabled": self.voice_enabled,
-                "parent_msg_uuid": None,
-                "seen_msg_uuids": seen_msg_uuids,
-                "retry_last_user_msg_uuid": retry_last_user_msg_uuid,
-                "num_candidates": num_candidates,
-                "give_room_introductions": give_room_introductions,
-                "mock_response": mock_response,
-                **kwargs
+        return pages 
+     
+    def next(self):
+        """ Generate alternate response """
+
+        message = Messaging.Object(
+            self.cai,
+            None
+        )
+
+        replies = message.send(self,
+            options = {
+                "parent_msg_uuid": self.last_reply[0].uuid
             }
         )
 
-    class messages:
-        """ Query messages """
-        def __init__(self, chat):
-            self.chat: Chat = chat
+        self.__refresh(Chat.RefState.ALTER)
 
-        def all(self):
-            """ Returns all messages """
-            it = copy.deepcopy(self.chat.first_page)
-            messages = []
+        return replies
 
-            messages.extend(it.messages)
-            while not it.is_first():
-                it.slide(-1)
-                messages.extend(it.messages)
+    def reply(self, message: Messaging.Object, uuid: str = None):
+        """ Reply to the bot """
 
-            return messages
+        options = {}
+
+        if len(self.last_reply) > 1:
+            if uuid == None:
+                raise errors.ValueError("Missing message uuid")
+            
+            seen = []
+            valid = False
+            for msg in self.last_reply:
+                if msg.uuid == uuid:
+                    valid = True
+                seen.append(msg.uuid)
+
+            if not valid:
+                raise errors.ValueError("Invalid message uuid")
+            
+            options["seen_msg_uuids"] = seen
+            options["primary_msg_uuid"] = uuid
         
-        def range(self, end: int, start: int = 0):
-            """
-            Returns messages in range `start` to `end`, inclusively
-            
-            Parameters:
-                end: the oldest message / index
-                start: the newest message / index
-                
-            Note: messages are indexed from new to old
-            """
 
-            if start < 0:
-                start = 0
-            if start > end:
-                start, end = end, start
+        replies = message.send(self, options=options)
 
-            page = DEFAULT_LAST_MSG_PAGE - (start // 20)
-            messages = []
-            
-            msg = self.history.get_messages(page)
-            has_more = msg.get('has_more', False)
-            msg = msg.get('messages', [])
-            
-            end -= start
-            end += 1
-        
-            while end > 0 and len(msg) > 0:
-                messages += [msg[i] for i in range(min(len(messages), end))]
-                end -= len(min(len(messages), end))
-                
-                if not has_more:
-                    break
+        self.__refresh(Chat.RefState.NEW)
 
-                page -= 1
-
-                msg = self.chat.history.get_messages(page)
-                has_more = msg.get('has_more', False)
-                msg = msg.get('messages', [])
-                
-            
-            return msg
+        return replies
 
     class remove:
-        """ Support message deleting """
+        """ Supports message deleting """
         def __init__(self, chat):
             self.chat: Chat = chat
         
         def uuids(self, uuids: list[str]) -> bool:
             """ Delete all messages associated with given uuids """
-            return self.cai.request(
+            return self.chat.cai.request(
                 'chat/history/msgs/delete/',
                 method='POST',
                 json={
-                    "history_id": self.history.external_id,
+                    "history_id": self.chat.history.external_id,
                     "uuids_to_delete": uuids
                 }
             )['status'] == "OK"
@@ -1579,7 +1647,7 @@ class Chat:
 
             page = DEFAULT_LAST_MSG_PAGE - (start // 20)
             
-            messages = self.history.get_messages(page)
+            messages = self.chat.history.get_messages(page)
             has_more = messages.get('has_more', False)
             messages = messages.get('messages', [])
             
@@ -1608,16 +1676,9 @@ class Chat:
             
             return success
         
-        def messages(self, msgs: Collection[Message]):
-            """ Removes messages by Message objects """
-            return self.cai.request(
-                'chat/history/msgs/delete/',
-                method='POST',
-                json={
-                    "history_id": self.history.external_id,
-                    "uuids_to_delete": [m.uuid for m in msgs]
-                }
-            )['status'] == "OK"
+        def messages(self, msgs: list[Message]):
+            """ Removes messages """
+            return self.uuids([msg.uuid for msg in msgs])
         
              
             
@@ -1629,6 +1690,11 @@ class Client(Authenticated):
     def __init__(self, token: str):
         """ Creates a new client """
         super().__init__(token=token)
+
+        self.User = Client.User(self)
+        self.Post = Client.Post(self)
+        self.Character = Client.Character(self)
+        self.Chat = Client.Chat(self)
 
     class User:
         """ Perform tasks related to users """
@@ -1701,15 +1767,15 @@ class Client(Authenticated):
             """ Get all voices """
             return [Voice(**info) for info in self.cai.request('chat/character/voices/')['voices']]
         
-    def user_api(self) -> User:
-        """ Get the users manager """
-        return Client.User(self)
-    
-    def post_api(self) -> Post:
-        """ Get the posts manager """
-        return Client.Post(self)
-    
-    def character_api(self) -> Character:
-        """ Get the characters manager """
-        return Client.Character(self)
+    class Chat:
+        """ Support old API chatting """
+        def __init__(self, cai: CAI):
+            self.cai = cai
         
+        def open(self, external_id: str):
+            """ Open (or reopen) a chat """
+            return Chat(self.cai, external_id)
+        
+        def msg(self, text: str, **kwargs):
+            """ Create a message """
+            return Messaging.Object(text, **kwargs)
