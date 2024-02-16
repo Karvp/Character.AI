@@ -18,6 +18,20 @@ class File:
             raise TypeError("'file' object must be string or BytesIO")
     def extract(self):
         return self.name, self.file, self.content_type
+
+from base64 import b64decode
+
+class MP3:
+    """ MP3 audio file content """
+
+    def __init__(self, base64: str):
+        self.data = b64decode(base64.encode("utf-8"))
+
+    def dump(self, fp):
+        fp.write(self.data)
+    
+    def binaries(self):
+        return self.data
     
 
 class Post:
