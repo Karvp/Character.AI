@@ -9,7 +9,7 @@ You can get the token to use in this library from your Character AI account. kra
 > This library is developing, bugs may occur occasionally. Every contribution is greatly appreciated!
 
 
-Oh, and sorry for the messy coding 🤣
+Sorry for the messy coding 🤣
 If you have any issues, please tell me at Github Issues.
 
 # Usage
@@ -61,15 +61,16 @@ try:
     # if you have alternatives, you can select by its uuid
     # response = chat.reply(message, uuid="0000-0000-0000-0000")
 
-    # the reply function returns a Response object, containing `replies` and `audios`
-    # `audios` are list of new.MP3 object
+    # the reply function returns a Response object, with its attributes: `replies` and `audios`
+    # `audios` is the list of new.MP3 object, use new.MP3.binaries() to get the binaries
+    # `replies` containing replies from the bot
 
     # to get alternative response, use chat.next()
     response = chat.next()
 except errors.ServerError:
     print("Retrying...")
     try:
-        # After you've sent the message for the first time, you can retry to send it like this
+        # After you've sent the message for the first time, you can retry sending it like this
         response = message.retry()
     except errors.ServerError:
         print("Failed!")
