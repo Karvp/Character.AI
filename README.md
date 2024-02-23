@@ -12,6 +12,9 @@ You can get the token to use in this library from your Character AI account. kra
 Sorry for the messy coding 🤣
 If you have any issues, please tell me at Github Issues.
 
+# Documentation
+You can check the [wiki](../../wiki) or read my notes in the code, though it is so little.
+
 # Usage
 Currently this library only supports querying with: Character, Post, User and Chat. You can make a post, comment on it, search information about characters, users, posts, or even chatting
 
@@ -75,6 +78,3 @@ except errors.ServerError:
     except errors.ServerError:
         print("Failed!")
 ```
-
-# Documentation
-Please check the comments I made in the code. Btw, if it is unclear, please notice me.
