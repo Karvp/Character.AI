@@ -88,7 +88,7 @@ class CAI:
     """ Character AI session """
     def __init__(self, token: str = None):
         """ Creates a new session """
-        self.session = tls_client.Session(client_identifier='chrome112')
+        self.session = tls_client.Session(client_identifier='firefox_120')
         self.sub = Subcription.beta
         self.timestamp: float = time()
         if token != None:
