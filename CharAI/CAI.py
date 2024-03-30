@@ -1,4 +1,5 @@
 import tls_client
+import cloudscraper, requests
 import ujson as json
 import copy
 import inspect
@@ -867,10 +868,9 @@ class Topic:
             'has_more': data['has_more']
         }
     
-    def post(self, post: new.Post, cai: Authenticated = None):
+    def post(self, post: new.Post):
         """ Posts a new post """
-        if cai == None:
-            cai = self.__cai
+        cai = self.__cai
         data = {
             'post_title': post.title,
             'topic_external_id': self.external_id,
@@ -1244,6 +1244,7 @@ class Messaging:
                         new.MP3(chunk["speech"])
                         for chunk in
                         resp
+                        if "speech" in chunk
                     ]
                 )
             else:
@@ -1779,3 +1780,6 @@ class Client(Authenticated):
         def msg(self, text: str, **kwargs):
             """ Create a message """
             return Messaging.Object(text, **kwargs)
+    
+
+        
