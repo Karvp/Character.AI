@@ -1,6 +1,9 @@
 # Character.AI
 An unofficial high level API for character.ai for Python
 
+> [!WARNING]
+> There is an upcoming big change. Additional information that is not necessary is removed. Instead, they can be fetched through another API that will be provided.
+
 # Introduction
 The original idea was from [kramcat's CharacterAI](https://github.com/kramcat/characterai). This library aims on ease of use rather than a more functional library.
 You can get the token to use in this library from your Character AI account. kramcat has made [a demonstration](https://github.com/kramcat/characterai?tab=readme-ov-file#-get-token) on it.
