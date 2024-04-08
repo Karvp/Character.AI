@@ -81,3 +81,8 @@ except errors.ServerError:
     except errors.ServerError:
         print("Failed!")
 ```
+
+# Bottom
+
+> [!NOTE]
+> I built this library as a hobby, so I will not update it frequently. Stay tuned if you find something interesting.
