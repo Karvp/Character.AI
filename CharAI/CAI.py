@@ -27,7 +27,7 @@ DEFAULT_LAST_MSG_PAGE = 1000000
 ANONYMOUS = 'ANONYMOUS'
 
 class Data(Enum):
-    unknown = 1
+    unknown = None
 UNKNOWN = Data.unknown
 
 class Subcription(Enum):
@@ -53,12 +53,12 @@ def parse_time(time: str|Data) -> datetime:
     """ Parses time string """
     return UNKNOWN if time == UNKNOWN else tparse(time)
 
-def get_avatar(self, info: dict, pre: str = ''):
+def get_avatar(self, info: dict, pre: str = '', pre2: str = ''):
     """ Get and save an avatar """
-    setattr(self, 'avatar', info.pop(pre + 'avatar_file_name', UNKNOWN))
+    setattr(self, pre2 + 'avatar', info.pop(pre + 'avatar_file_name', UNKNOWN))
     if self.avatar != UNKNOWN and self.avatar != None and len(self.avatar) > 0:
-        self.avatar = AVATAR_URL + self.avatar
-    setattr(self, 'avatar_type', info.pop(pre + 'avatar_type', UNKNOWN))
+        setattr(self, pre2 + 'avatar', AVATAR_URL + self.avatar)
+    setattr(self, pre2 + 'avatar_type', info.pop(pre + 'avatar_type', UNKNOWN))
 
 def get_img(self, info: dict):
     """ Get and save an image """
@@ -925,23 +925,23 @@ class User:
             """ Loads user's information from the api """
 
             info = info.pop('user', dict())
-            self.bio = info.pop('bio', UNKNOWN)
-            self.name = info.pop('name', UNKNOWN)
-            self.email = info.pop('email', UNKNOWN)
-            self.is_human = info.pop('is_human', UNKNOWN)
-            self.blocked_users = info.pop('blocked_users', UNKNOWN)
-            self.suspended_until = info.pop('suspended_until', UNKNOWN)
-            self.hidden_characters = info.pop('hidden_characters', UNKNOWN)
+            self._bio = info.pop('bio', UNKNOWN)
+            self._name = info.pop('name', UNKNOWN)
+            self._email = info.pop('email', UNKNOWN)
+            self._is_human = info.pop('is_human', UNKNOWN)
+            self._blocked_users = info.pop('blocked_users', UNKNOWN)
+            self._suspended_until = info.pop('suspended_until', UNKNOWN)
+            self._hidden_characters = info.pop('hidden_characters', UNKNOWN)
             
             info = info.pop('user', dict())
-            self.subscription = self.__cai.sub
-            self.id = info.pop('id', UNKNOWN)
-            self.username = info.pop('username', UNKNOWN)
-            self.is_staff = info.pop('is_staff', UNKNOWN)
-            self.first_name = info.pop('first_name', UNKNOWN)
+            self._subscription = self.__cai.sub
+            self._id = info.pop('id', UNKNOWN)
+            self._username = info.pop('username', UNKNOWN)
+            self._is_staff = info.pop('is_staff', UNKNOWN)
+            self._first_name = info.pop('first_name', UNKNOWN)
             
             info = info.pop('account', dict())
-            get_avatar(self, info)
+            get_avatar(self, info, pre2='_')
 
         def follow(self, username: str):
             """ Follow somebody """
@@ -1067,60 +1067,50 @@ class User:
         """ Contains user's information, but attributes are locked """
         def __init__(self, cai: Authenticated):
             super().__init__(cai)
-            self.__prepare()
-
-        def __prepare(self):
-            """ Lock attributes """
-            @property
-            def bio(self):
-                return self._bio
-            @property
-            def name(self):
-                return self._name
-            @property
-            def email(self):
-                return self._email
-            @property
-            def is_human(self):
-                return self._is_human
-            @property
-            def blocked_users(self):
-                return self._blocked_users
-            @property
-            def suspended_until(self):
-                return self._suspended_until
-            @property
-            def hidden_characters(self):
-                return self._hidden_characters
-            @property
-            def subscription(self):
-                return self._subscription
-            @property
-            def id(self):
-                return self._id
-            @property
-            def username(self):
-                return self._username
-            @property
-            def is_staff(self):
-                return self._is_staff
-            @property
-            def first_name(self):
-                return self._first_name
-            @property
-            def avatar(self):
-                return self._avatar
-            @property
-            def avatar_type(self):
-                return self._avatar_type
-
             delattr(self, '_Me__cai')
 
-            attrs = [a for a in dir(self) if not a[0] == '_' and not inspect.ismethod(getattr(self, a))]
-            for attr in attrs:
-                setattr(self, "_" + attr, getattr(self, attr))
-                delattr(self, attr)
-                setattr(self, attr, locals()[attr])
+        @property
+        def bio(self):
+            return self._bio
+        @property
+        def name(self):
+            return self._name
+        @property
+        def email(self):
+            return self._email
+        @property
+        def is_human(self):
+            return self._is_human
+        @property
+        def blocked_users(self):
+            return self._blocked_users
+        @property
+        def suspended_until(self):
+            return self._suspended_until
+        @property
+        def hidden_characters(self):
+            return self._hidden_characters
+        @property
+        def subscription(self):
+            return self._subscription
+        @property
+        def id(self):
+            return self._id
+        @property
+        def username(self):
+            return self._username
+        @property
+        def is_staff(self):
+            return self._is_staff
+        @property
+        def first_name(self):
+            return self._first_name
+        @property
+        def avatar(self):
+            return self._avatar
+        @property
+        def avatar_type(self):
+            return self._avatar_type
             
         
 Owner.Character = User.Other
