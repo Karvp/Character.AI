@@ -2,7 +2,7 @@
 An unofficial high level API for character.ai for Python
 
 > [!WARNING]
-> There is an upcoming big change. Additional information that is not necessary is removed. Instead, they can be fetched through another API that will be provided.
+> Since [kramcat's CharacterAI](https://github.com/kramcat/characterai) has updated (v1.0.0a1) and cover a lot of this library's functions, there is no need for this library anymore. This library will be archived. Thanks for all of the support.
 
 # Introduction
 The original idea was from [kramcat's CharacterAI](https://github.com/kramcat/characterai). This library aims on ease of use rather than a more functional library.
